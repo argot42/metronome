@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"time"
@@ -49,6 +50,7 @@ func metronome(bpm int) error {
 		SampleRate:   SampleRate,
 		ChannelCount: Channels,
 		Format:       Format,
+		BufferSize:   time.Millisecond * 12,
 	}
 
 	otoCtx, ready, err := oto.NewContext(o)
@@ -58,19 +60,18 @@ func metronome(bpm int) error {
 
 	<-ready
 
-	for range time.Tick(time.Minute / time.Duration(bpm)) {
-		go play(otoCtx, data)
+	r := bytes.NewReader(data)
+	player := otoCtx.NewPlayer(r)
+	defer player.Close()
+
+	interval := time.Minute / time.Duration(bpm)
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		player.Seek(0, io.SeekStart)
+		player.Play()
 	}
 
 	return nil
-}
-
-func play(otoCtx *oto.Context, data []byte) {
-	r := bytes.NewReader(data)
-	player := otoCtx.NewPlayer(r)
-	player.Play()
-	for player.IsPlaying() {
-		time.Sleep(time.Millisecond)
-	}
-	player.Close()
 }
